@@ -29,7 +29,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-openai.api_key = "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"
+# this is for study purposes. In a real app store your api_key in an environment file 
+openai.api_key = "your_api_key"
 
 app.include_router(router)
 

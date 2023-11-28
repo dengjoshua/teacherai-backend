@@ -1,5 +1,4 @@
-from fastapi import FastAPI
-import openai
+from openai import OpenAI
 from schemas import QuestionCreate, InteractionDelete
 from models import Interaction
 from sqlalchemy.orm import Session
@@ -9,6 +8,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from uuid import uuid4
 from datetime import date
 from routes import router
+from sqlalchemy.orm import Session
+from models import User
+
+from jwt_handler import jwt_decode
+from routes import router, oauth2_scheme
 
 Base.metadata.create_all(bind=engine)
 
@@ -21,6 +25,8 @@ origins = [
 
 app = FastAPI()
 
+client = OpenAI(api_key="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")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -29,9 +35,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-openai.api_key = "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"
-
 app.include_router(router)
+
+
+async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_data)):
+    auth_token = jwt_decode(token)
+
+    if not auth_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    user = db.query(User).filter(User.id == auth_token["user_id"]).first()
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return user
 
 
 @app.get("/api/interactions")
@@ -41,12 +67,15 @@ def fetch_interactions(db: Session = Depends(get_data)):
 
 @app.post('/question')
 async def ask_question(question: QuestionCreate, db: Session = Depends(get_data)):
-    response = openai.Completion.create(
-        engine="text-davinci-003",
-        prompt=question.text,
-        max_tokens=256
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {"role": "user",
+             "content": question.text
+             }
+        ]
     )
-    answer = response.choices[0].text.strip()
+    answer = response.choices[0].message.content
     interaction_model = Interaction(
         id=str(uuid4()), question=question.text, answer=answer)
     db.add(interaction_model)
@@ -63,3 +92,13 @@ def delete_interaction(interaction: InteractionDelete, db: Session = Depends(get
     db.commit()
 
     return db.query(Interaction).all()
+
+
+@app.get("/api/users")
+def get_users(db: Session = Depends(get_data)):
+    return db.query(User).all()
+
+
+@app.get("/users/{id}")
+def get_user(id: str, db: Session = Depends(get_data)):
+    return db.query(User).filter(User.id == id).first()

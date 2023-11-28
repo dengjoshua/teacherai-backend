@@ -25,7 +25,7 @@ origins = [
 
 app = FastAPI()
 
-client = OpenAI(api_key="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")
+client = OpenAI(api_key="")
 
 app.add_middleware(
     CORSMiddleware,
